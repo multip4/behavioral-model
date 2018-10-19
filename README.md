@@ -1,3 +1,10 @@
+# MultiSwitch BMv2 Repository(Fork from P4lang/BMv2)
+
+## In this forked repository, the extended features will be implemented.
+- PIFO(Push-in First-out) model extention for programmable packet scheduling via P4 program.
+- Others like. hypervisor, isolation, etc.
+
+
 # BEHAVIORAL MODEL REPOSITORY
 
 [![Build Status](https://travis-ci.org/p4lang/behavioral-model.svg?branch=master)](https://travis-ci.org/p4lang/behavioral-model)
