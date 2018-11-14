@@ -538,6 +538,7 @@ SimpleSwitch::egress_thread(size_t worker_id) {
   PHV *phv;
 
   while (1) {
+    std::this_thread::sleep_for (std::chrono::milliseconds(100)); // add sleep for test dequeue
     std::unique_ptr<Packet> packet;
     size_t port;
 #ifdef SSWITCH_PRIORITY_QUEUEING_ON
