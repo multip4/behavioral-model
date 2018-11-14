@@ -130,6 +130,10 @@ SimpleSwitch::SimpleSwitch(port_t max_port, bool enable_swap)
   add_required_field("standard_metadata", "clone_spec");
   add_required_field("standard_metadata", "egress_port");
 
+  // add fields.
+  add_required_field("standard_metadata", "pifo_rank");
+  add_required_field("standard_metadata", "pifo_departure_time");
+
   force_arith_header("standard_metadata");
   force_arith_header("queueing_metadata");
   force_arith_header("intrinsic_metadata");
@@ -196,7 +200,9 @@ SimpleSwitch::~SimpleSwitch() {
 #ifdef SSWITCH_PRIORITY_QUEUEING_ON
     egress_buffers.push_front(i, 0, nullptr);
 #else
-    egress_buffers.push_front(i, nullptr);
+//    egress_buffers.push_front(i, nullptr);
+    // modified
+    egress_buffers.push_in(i, nullptr, 0, 0);
 #endif
   }
   output_buffer.push_front(nullptr);
@@ -320,7 +326,14 @@ SimpleSwitch::enqueue(port_t egress_port, std::unique_ptr<Packet> &&packet) {
         egress_port, SSWITCH_PRIORITY_QUEUEING_NB_QUEUES - 1 - priority,
         std::move(packet));
 #else
-    egress_buffers.push_front(egress_port, std::move(packet));
+
+    //! get packet rank, from standard_metadata.pifo_rank
+    //! get packet dequeue time, from standard_metadata.pifo_dequeue_time
+
+    Field &rank = phv->get_field("standard_metadata.pifo_rank");
+    Field &d_time = phv->get_field("standard_metadata.pifo_departure_time");
+
+    egress_buffers.push_in(egress_port, std::move(packet), rank.get_double(), d_time.get_double());
 #endif
 }
 

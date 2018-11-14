@@ -173,7 +173,7 @@ class SimpleSwitch : public Switch {
 #ifdef SSWITCH_PRIORITY_QUEUEING_ON
   bm::QueueingLogicPriRL<std::unique_ptr<Packet>, EgressThreadMapper>
 #else
-  bm::QueueingLogicRL<std::unique_ptr<Packet>, EgressThreadMapper>
+  bm::QueueingLogicPIFO<std::unique_ptr<Packet>, EgressThreadMapper>
 #endif
   egress_buffers;
   Queue<std::unique_ptr<Packet> > output_buffer;
