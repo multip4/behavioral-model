@@ -332,8 +332,10 @@ SimpleSwitch::enqueue(port_t egress_port, std::unique_ptr<Packet> &&packet) {
 
     Field &rank = phv->get_field("standard_metadata.pifo_rank");
     Field &d_time = phv->get_field("standard_metadata.pifo_departure_time");
+    BMLOG_DEBUG_PKT(*packet, "PIFO: Enqueue Rank {}", rank.get_double());
+    BMLOG_DEBUG_PKT(*packet, "PIFO: Enqueue D_TIME {}", d_time.get_double());
 
-    egress_buffers.push_in(egress_port, std::move(packet), rank.get_double(), d_time.get_double());
+  egress_buffers.push_in(egress_port, std::move(packet), rank.get_double(), d_time.get_double());
 #endif
 }
 
