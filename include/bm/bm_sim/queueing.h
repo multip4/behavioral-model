@@ -349,7 +349,9 @@ class QueueingLogicRL {
   struct QEComp {
     bool operator()(const QE &lhs, const QE &rhs) const {
       // return (lhs.send == rhs.send) ? lhs.id > rhs.id : lhs.send > rhs.send;
-      return lhs.send > rhs.send;
+      return lhs.send >
+
+      rhs.send;
     }
   };
 
@@ -697,6 +699,248 @@ class QueueingLogicPriRL {
   size_t nb_priorities;
 };
 
-}  // namespace bm
 
+
+//! PIFO Extention Based on QueueingLogicRL
+    template <typename T, typename FMap>
+    class QueueingLogicPIFO {
+    public:
+        //! @copydoc QueueingLogic::QueueingLogic()
+        //!
+        //! Initially, none of the logical queues will be rate-limited, i.e. the
+        //! instance will behave as an instance of QueueingLogic.
+        QueueingLogicPIFO(size_t nb_queues, size_t nb_workers, size_t capacity,
+                          FMap map_to_worker)
+                : nb_queues(nb_queues), nb_workers(nb_workers),
+                  queues_info(nb_queues), workers_info(nb_workers),
+                  map_to_worker(std::move(map_to_worker)) {
+          auto now = clock::now();
+          for (auto &q_info : queues_info) {
+            q_info.capacity = capacity;
+            q_info.last_sent = now;
+          }
+        }
+
+        //! If the logical queue with id \p queue_id is full, the function will return
+        //! `0` immediately. Otherwise, \p item will be copied to the front of the
+        //! logical queue and the function will return `1`.
+
+        //! not used by queueing testing, jkchoi.
+
+//    int push_front(size_t queue_id, const T &item) {
+//        size_t worker_id = map_to_worker(queue_id);
+//        auto &q_info = queues_info.at(queue_id);
+//        auto &w_info = workers_info.at(worker_id);
+//        std::unique_lock<std::mutex> lock(w_info.q_mutex);
+//        if (q_info.size >= q_info.capacity) return 0;
+//        q_info.last_sent = get_next_tp(q_info);
+//        // w_info.queue.emplace(item, queue_id, q_info.last_sent, id++);
+////        w_info.queue.emplace(item, queue_id, q_info.last_sent);
+//        q_info.size++;
+//        w_info.q_not_empty.notify_one();
+//        return 1;
+//    }
+
+        //! Same as push_front(size_t queue_id, const T &item), but \p item is moved
+        //! instead of copied.
+
+//    int push_front(size_t queue_id, T &&item) {
+//        size_t worker_id = map_to_worker(queue_id);
+//        auto &q_info = queues_info.at(queue_id);
+//        auto &w_info = workers_info.at(worker_id);
+//        std::unique_lock<std::mutex> lock(w_info.q_mutex);
+//
+//        if (q_info.size >= q_info.capacity) return 0;
+//        q_info.last_sent = get_next_tp(q_info);
+//        // w_info.queue.emplace(std::move(item), queue_id, q_info.last_sent, id++);
+//
+//        w_info.queue.emplace(std::move(item), queue_id, q_info.last_sent, *item, 0); // modified
+//        q_info.size++;
+//        w_info.q_not_empty.notify_one();
+//        return 1;
+//    }
+
+
+//    //! Same as push_front(size_t queue_id, const T &item), but \p item is moved
+//    //! instead of copied.
+        int push_in(size_t queue_id, T &&item, size_t rank, size_t dequeue_time) {
+          size_t worker_id = map_to_worker(queue_id);
+          auto &q_info = queues_info.at(queue_id);
+          auto &w_info = workers_info.at(worker_id);
+          std::unique_lock<std::mutex> lock(w_info.q_mutex);
+          if (q_info.size >= q_info.capacity) return 0;
+          q_info.last_sent = get_next_tp(q_info);
+          // w_info.queue.emplace(std::move(item), queue_id, q_info.last_sent, id++);
+          w_info.queue.emplace(std::move(item), queue_id, q_info.last_sent, rank, dequeue_time);
+          q_info.size++;
+          w_info.q_not_empty.notify_one();
+          return 1;
+        }
+
+
+        //! Retrieves the oldest element for the worker thread indentified by \p
+        //! worker_id and moves it to \p pItem. The id of the logical queue which
+        //! contained this element is copied to \p queue_id. Note that this function
+        //! will block until 1) an element is available 2) this element is free to
+        //! leave the queue according to the rate limiter.
+        void pop_back(size_t worker_id, size_t *queue_id, T *pItem) {
+          auto &w_info = workers_info.at(worker_id);
+          auto &queue = w_info.queue;
+          std::unique_lock<std::mutex> lock(w_info.q_mutex);
+          while (true) {
+            if (queue.size() == 0) {
+              w_info.q_not_empty.wait(lock);
+            } else {
+              if (queue.top().send <= clock::now()) break;
+              w_info.q_not_empty.wait_until(lock, queue.top().send);
+            }
+          }
+          *queue_id = queue.top().queue_id;
+          // TODO(antonin): improve / document this
+          // http://stackoverflow.com/questions/20149471/move-out-element-of-std-priority-queue-in-c11
+          *pItem = std::move(const_cast<PIFO_ELEMENT &>(queue.top()).e);
+          queue.pop();
+          auto &q_info = queues_info.at(*queue_id);
+          q_info.size--;
+        }
+
+        //! @copydoc QueueingLogic::size
+        size_t size(size_t queue_id) const {
+          size_t worker_id = map_to_worker(queue_id);
+          auto &q_info = queues_info.at(queue_id);
+          auto &w_info = workers_info.at(worker_id);
+          std::unique_lock<std::mutex> lock(w_info.q_mutex);
+          return q_info.size;
+        }
+
+        //! @copydoc QueueingLogic::set_capacity
+        void set_capacity(size_t queue_id, size_t c) {
+          size_t worker_id = map_to_worker(queue_id);
+          auto &q_info = queues_info.at(queue_id);
+          auto &w_info = workers_info.at(worker_id);
+          std::unique_lock<std::mutex> lock(w_info.q_mutex);
+          q_info.capacity = c;
+        }
+
+        //! Set the maximum rate of the logical queue with id \p queue_id to \p
+        //! pps. \p pps is expressed in "number of elements per second". Until this
+        //! function is called, there will be no rate limit for the queue.
+        void set_rate(size_t queue_id, uint64_t pps) {
+          using std::chrono::duration;
+          using std::chrono::duration_cast;
+          size_t worker_id = map_to_worker(queue_id);
+          auto &q_info = queues_info.at(queue_id);
+          auto &w_info = workers_info.at(worker_id);
+          std::unique_lock<std::mutex> lock(w_info.q_mutex);
+          q_info.queue_rate_pps = pps;
+          q_info.pkt_delay_ticks = duration_cast<ticks>(duration<double>(1. / pps));
+        }
+
+        //! Deleted copy constructor
+        QueueingLogicPIFO(const QueueingLogicPIFO &) = delete;
+        //! Deleted copy assignment operator
+        QueueingLogicPIFO &operator =(const QueueingLogicPIFO &) = delete;
+
+        //! Deleted move constructor
+        QueueingLogicPIFO(QueueingLogicPIFO &&) = delete;
+        //! Deleted move assignment operator
+        QueueingLogicPIFO &&operator =(QueueingLogicPIFO &&) = delete;
+
+    private:
+        using ticks = std::chrono::nanoseconds;
+        // clock choice? switch to steady if observing re-ordering
+        // using clock = std::chrono::steady_clock;
+        using clock = std::chrono::high_resolution_clock;
+        struct RndInput {
+            size_t queue_id;
+            int v;
+        };
+        struct QE {
+            // QE(T e, size_t queue_id, const clock::time_point &send, size_t id)
+            //     : e(std::move(e)), queue_id(queue_id), send(send), id(id) { }
+            QE(T e, size_t queue_id, const clock::time_point &send)
+                    : e(std::move(e)), queue_id(queue_id), send(send) { }
+
+            T e;
+            size_t queue_id;
+            clock::time_point send;
+            // size_t id;
+        };
+
+
+        //! =========Add Data Structures and Others ===============
+
+        struct PIFO_ELEMENT {
+            // QE(T e, size_t queue_id, const clock::time_point &send, size_t id)
+            //     : e(std::move(e)), queue_id(queue_id), send(send), id(id) { }
+            PIFO_ELEMENT(T e, size_t queue_id, const clock::time_point &send,
+                         size_t rank, size_t dequeue_time)
+                    : e(std::move(e)), queue_id(queue_id), send(send)
+                    , rank(rank), dequeue_time(dequeue_time){ }
+
+            T e;
+            size_t queue_id;
+            size_t rank;
+            size_t dequeue_time;
+            clock::time_point send;
+            // size_t id;
+        };
+
+        struct PIFO_ELEMENT_COMPARE {
+            bool operator()(const PIFO_ELEMENT &lhs, const PIFO_ELEMENT &rhs) const {
+              // compare function, this will pop the smallest element from the queue.
+              return lhs.rank > rhs.rank;
+            }
+        };
+
+        using MyPIFOQ = std::priority_queue<PIFO_ELEMENT, std::deque<PIFO_ELEMENT>, PIFO_ELEMENT_COMPARE>;
+
+        //! =============== End =========
+
+
+        struct QEComp {
+            bool operator()(const QE &lhs, const QE &rhs) const {
+              // return (lhs.send == rhs.send) ? lhs.id > rhs.id : lhs.send > rhs.send;
+              return lhs.send > rhs.send;
+            }
+        };
+
+        // performance seems to be roughly the same for deque vs vector
+        using MyQ = std::priority_queue<QE, std::deque<QE>, QEComp>;
+        // using MyQ = std::priority_queue<QE, std::vector<QE>, QEComp>;
+
+        struct QueueInfo {
+            size_t size{0};
+            size_t capacity{0};
+            uint64_t queue_rate_pps{};
+            // interesting to note that {0} fails with g++4.8, but not with g++4.9
+            // did not get to the root of it, but could be because of an explicit
+            // constructor somewhere in the std lib implementation used
+            ticks pkt_delay_ticks{ticks::zero()};
+            clock::time_point last_sent{};
+        };
+
+        struct WorkerInfo {
+            //! Changed Here
+            // MyQ queue{};
+            MyPIFOQ queue{};
+
+            mutable std::mutex q_mutex{};
+            mutable std::condition_variable q_not_empty{};
+        };
+
+        clock::time_point get_next_tp(const QueueInfo &q_info) {
+          return std::max(clock::now(), q_info.last_sent + q_info.pkt_delay_ticks);
+        }
+
+        size_t nb_queues;
+        size_t nb_workers;
+        std::vector<QueueInfo> queues_info;
+        std::vector<WorkerInfo> workers_info;
+        FMap map_to_worker;
+        // size_t id{0};
+    };
+
+
+}  // namespace bm
 #endif  // BM_BM_SIM_QUEUEING_H_

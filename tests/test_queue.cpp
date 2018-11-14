@@ -19,7 +19,7 @@
  */
 
 #include <gtest/gtest.h>
-
+#include <iostream>
 #include <bm/bm_sim/queue.h>
 
 #include <thread>
@@ -47,6 +47,8 @@ class QueueTest : public TestWithParam< std::tuple<size_t, int> > {
   virtual void SetUp() {
     queue_size = std::get<0>(GetParam());
     iterations = std::get<1>(GetParam());
+      std::cout << "queue size: " << queue_size << std::endl;
+      std::cout << "iteration: " << iterations << std::endl;
 
     queue = unique_ptr<Queue<int> >(new Queue<int>(queue_size));
     values = unique_ptr<int[]>(new int[iterations]);
@@ -55,6 +57,7 @@ class QueueTest : public TestWithParam< std::tuple<size_t, int> > {
     std::uniform_int_distribution<int> distrib;
     for (int i = 0; i < iterations; i++) {
       values[i] = distrib(generator);
+//      std::cout << values[i] << std::endl;
     }
   }
 
