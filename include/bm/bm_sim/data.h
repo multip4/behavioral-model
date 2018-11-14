@@ -201,6 +201,13 @@ class Data {
     return value.convert_to<int>();
   }
 
+  //! get the value of Data has an double
+  int get_double() const {
+    assert(arith);
+    return value.convert_to<double>();
+  }
+
+
   //! get the binary representation of Data has a string. There is no sign
   //! support.
   std::string get_string() const {
