@@ -702,8 +702,8 @@ class QueueingLogicPriRL {
 
 
 //! PIFO Extention Based on QueueingLogicRL
-    template <typename T, typename FMap>
-    class QueueingLogicPIFO {
+template <typename T, typename FMap>
+class QueueingLogicPIFO {
     public:
         //! @copydoc QueueingLogic::QueueingLogic()
         //!
@@ -783,6 +783,8 @@ class QueueingLogicPriRL {
         //! contained this element is copied to \p queue_id. Note that this function
         //! will block until 1) an element is available 2) this element is free to
         //! leave the queue according to the rate limiter.
+
+        //! need to replace if(queue.top().send => queue.top().departure time <= clock:now()
         void pop_back(size_t worker_id, size_t *queue_id, T *pItem) {
           auto &w_info = workers_info.at(worker_id);
           auto &queue = w_info.queue;
@@ -792,7 +794,7 @@ class QueueingLogicPriRL {
               w_info.q_not_empty.wait(lock);
             } else {
               if (queue.top().send <= clock::now()) break;
-              w_info.q_not_empty.wait_until(lock, queue.top().send);
+              //w_info.q_not_empty.wait_until(lock, queue.top().send); // comment wait function.
             }
           }
           *queue_id = queue.top().queue_id;
