@@ -769,9 +769,12 @@ class QueueingLogicPIFO {
           auto &w_info = workers_info.at(worker_id);
           std::unique_lock<std::mutex> lock(w_info.q_mutex);
           if (q_info.size >= q_info.capacity) return 0;
-          q_info.last_sent = get_next_tp(q_info);
+
+//          q_info.last_sent = get_next_tp(q_info);
+
+          auto enqueue_time = clock::now();
           // w_info.queue.emplace(std::move(item), queue_id, q_info.last_sent, id++);
-          w_info.queue.emplace(std::move(item), queue_id, q_info.last_sent, rank, dequeue_time);
+          w_info.queue.emplace(std::move(item), queue_id, enqueue_time, rank, dequeue_time);
           q_info.size++;
           w_info.q_not_empty.notify_one();
           return 1;
@@ -875,23 +878,25 @@ class QueueingLogicPIFO {
         struct PIFO_ELEMENT {
             // QE(T e, size_t queue_id, const clock::time_point &send, size_t id)
             //     : e(std::move(e)), queue_id(queue_id), send(send), id(id) { }
-            PIFO_ELEMENT(T e, size_t queue_id, const clock::time_point &send,
+            PIFO_ELEMENT(T e, size_t queue_id, const clock::time_point &enqueue_time,
                          size_t rank, size_t dequeue_time)
-                    : e(std::move(e)), queue_id(queue_id), send(send)
+                    : e(std::move(e)), queue_id(queue_id), enqueue_time(enqueue_time)
                     , rank(rank), dequeue_time(dequeue_time){ }
 
             T e;
             size_t queue_id;
             size_t rank;
             size_t dequeue_time;
-            clock::time_point send;
+            clock::time_point enqueue_time;
             // size_t id;
         };
 
         struct PIFO_ELEMENT_COMPARE {
             bool operator()(const PIFO_ELEMENT &lhs, const PIFO_ELEMENT &rhs) const {
               // compare function, this will pop the smallest element from the queue.
-              return lhs.rank > rhs.rank;
+
+              return (lhs.rank == rhs.rank) ? lhs.enqueue_time > rhs.enqueue_time : lhs.rank > rhs.rank;
+//              return lhs.rank > rhs.rank;
             }
         };
 
