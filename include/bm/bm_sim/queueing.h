@@ -796,7 +796,7 @@ class QueueingLogicPIFO {
             if (queue.size() == 0) {
               w_info.q_not_empty.wait(lock);
             } else {
-              if (queue.top().send <= clock::now()) break;
+              if (queue.top().enqueue_time <= clock::now()) break;  // need to change the enqueue_time later... jkchoi
               //w_info.q_not_empty.wait_until(lock, queue.top().send); // comment wait function.
             }
           }
